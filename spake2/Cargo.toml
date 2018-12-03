@@ -31,6 +31,7 @@ sha2 = "0.8"
 hkdf = "0.7"
 num-bigint = "0.2"
 hex = "0.3"
+zeroize = "=0.4.2"
 
 [dev-dependencies]
 bencher = "0.1"

@@ -294,6 +294,7 @@ extern crate hkdf;
 extern crate num_bigint;
 extern crate rand;
 extern crate sha2;
+extern crate zeroize;
 
 use curve25519_dalek::constants::ED25519_BASEPOINT_POINT;
 use curve25519_dalek::edwards::CompressedEdwardsY;
@@ -305,6 +306,7 @@ use rand::{rngs::OsRng, CryptoRng, Rng};
 use sha2::{Digest, Sha256};
 use std::fmt;
 use std::ops::Deref;
+use zeroize::Zeroize;
 
 /* "newtype pattern": it's a Vec<u8>, but only used for a specific argument
  * type, to distinguish between ones that are meant as passwords, and ones
@@ -721,7 +723,7 @@ impl<G: Group> SPAKE2<G> {
         Self::start_symmetric_internal(&password, &id_s, xy_scalar)
     }
 
-    pub fn finish(self, msg2: &[u8]) -> Result<Vec<u8>, SPAKEErr> {
+    pub fn finish(mut self, msg2: &[u8]) -> Result<Vec<u8>, SPAKEErr> {
         if msg2.len() != 1 + G::element_length() {
             return Err(SPAKEErr {
                 kind: ErrorType::WrongLength,
@@ -775,7 +777,7 @@ impl<G: Group> SPAKE2<G> {
         let tmp1 = G::scalarmult(&unblinding, &G::scalar_neg(&self.password_scalar));
         let tmp2 = G::add(&msg2_element, &tmp1);
         let key_element = G::scalarmult(&tmp2, &self.xy_scalar);
-        let key_bytes = G::element_to_bytes(&key_element);
+        let mut key_bytes = G::element_to_bytes(&key_element);
 
         // key = H(H(pw) + H(idA) + H(idB) + X + Y + K)
         //transcript = b"".join([sha256(pw).digest(),
@@ -784,7 +786,7 @@ impl<G: Group> SPAKE2<G> {
         //key = sha256(transcript).digest()
         // note that both sides must use the same order
 
-        Ok(match self.side {
+        let session_key = match self.side {
             Side::A => ed25519_hash_ab(
                 &self.password_vec,
                 &self.id_a,
@@ -808,7 +810,18 @@ impl<G: Group> SPAKE2<G> {
                 &msg2[1..],
                 &key_bytes,
             ),
-        })
+        };
+
+        //self.xy_scalar.zeroize();
+        //self.password_scalar.zeroize();
+        self.password_vec.zeroize();
+        //unblinding.zeroize();
+        //tmp1.zeroize();
+        //tmp2.zeroize();
+        //key_element.zeroize();
+        key_bytes.zeroize();
+
+        Ok(session_key)
     }
 }
 
